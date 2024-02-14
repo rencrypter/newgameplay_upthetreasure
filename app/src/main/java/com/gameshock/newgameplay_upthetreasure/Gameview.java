@@ -5,6 +5,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.os.StrictMode;
 import android.view.MotionEvent;
 import android.view.SurfaceView;
@@ -20,7 +21,7 @@ public class Gameview extends SurfaceView implements Runnable {
     public static float screenRatioX, screenRatioY;
     public float angle = 0;
 
-    boolean isPlaying = false, isMovingCharacter = false, isCharacterRevolve = false;
+    boolean isPlaying = false, isMovingCharacter = false, isCharacterRevolve = false, isCharacterShoot = false;
     //
     private Background background1;
     private CharacterMan character;
@@ -32,6 +33,7 @@ public class Gameview extends SurfaceView implements Runnable {
     Matrix matrix;
     private int radius = 100;
     float characterXPos, characterYPos;
+    private int collidingMountainIndex = 0;
 
     public Gameview(Context context, int ScreenX, int ScreenY) {
         super(context);
@@ -67,9 +69,8 @@ public class Gameview extends SurfaceView implements Runnable {
     public void run() {
 
         while (isPlaying) {
-
-            update();
             draw();
+            update();
             sleep();
 
         }
@@ -100,25 +101,27 @@ public class Gameview extends SurfaceView implements Runnable {
     private void revolveAroundTheMountain(Canvas canvas) {
 
         // Character revolving around the first mountain
+        if (collidingMountainIndex >= 0) {
+            float mountainX = mountains[collidingMountainIndex].x + mountains[collidingMountainIndex].width / 2;
+            float mountainY = mountains[collidingMountainIndex].y + mountains[collidingMountainIndex].height / 2;
 
-        float mountainX = mountains[0].x + mountains[0].width / 2;
-        float mountainY = mountains[0].y + mountains[0].height / 2;
 
+            // Create a rotation matrix around the mountain's center
+            characterXPos = mountainX + (int) (radius * Math.cos(angle)) - character.width / 2;
+            characterYPos = mountainY + (int) (radius * Math.sin(angle)) - character.height / 2;
 
-        // Create a rotation matrix around the mountain's center
-        characterXPos = mountainX + (int) (radius * Math.cos(angle)) - character.width / 2;
-        characterYPos = mountainY + (int) (radius * Math.sin(angle)) - character.height / 2;
+            // Update the angle for the next frame
+            angle += 0.1f;
 
-        // Update the angle for the next frame
-        angle += 0.1f;
+            // Apply rotation to the character drawable
+            matrix.reset();
+            matrix.postTranslate(characterXPos, characterYPos);
+            matrix.postRotate((float) Math.toDegrees(angle), characterXPos + character.width / 2, characterYPos + character.height / 2);
 
-        // Apply rotation to the character drawable
-        matrix.reset();
-        matrix.postTranslate(characterXPos, characterYPos);
-        matrix.postRotate((float) Math.toDegrees(angle), characterXPos + character.width / 2, characterYPos + character.height / 2);
+            canvas.drawBitmap(character.flight1, matrix, paint);
+        } else if (collidingMountainIndex == -1) {
 
-        canvas.drawBitmap(character.flight1, matrix, paint);
-
+        }
         //
 
     }
@@ -135,6 +138,7 @@ public class Gameview extends SurfaceView implements Runnable {
             }
         }
 
+
         //
         // Check if the character is out of bounds
         if (characterXPos < 0 || characterXPos > screenX || characterYPos < 0 || characterYPos > screenY || characterYPos > lavaBoundry) {
@@ -143,6 +147,67 @@ public class Gameview extends SurfaceView implements Runnable {
 
 
     }
+
+    private int getCollidingMountainIndex() {
+        // Find the index of the mountain with which the projectile collides
+        // You can use more specific logic based on your game requirements
+
+        for (int i = 0; i < mountains.length; i++) {
+            Rect projectileRect = new Rect(
+                    (int) characterXPos,
+                    (int) characterYPos,
+                    (int) (characterXPos + character.width),
+                    (int) (characterYPos + character.height)
+            );
+
+            Rect mountainRect = new Rect(
+                    (int) mountains[i].x,
+                    (int) mountains[i].y,
+                    (int) (mountains[i].x + mountains[i].width),
+                    (int) (mountains[i].y + mountains[i].height)
+            );
+
+            if (Rect.intersects(projectileRect, mountainRect)) {
+                // Collision detected, return the index of the colliding mountain
+                return i;
+            }
+        }
+
+        // No collision detected, return -1
+        return -1;
+    }
+
+    private boolean checkProjectileMountainCollision() {
+        // Assuming you have a projectile, adjust as needed
+        // Check if the projectile's position overlaps with any Mountain object's boundaries
+        // You can use simple rectangle overlapping checks or more advanced collision detection methods
+
+        // Example simple rectangle overlapping check
+        Rect projectileRect = new Rect(
+                (int) characterXPos,
+                (int) characterYPos,
+                (int) (characterXPos + character.width),
+                (int) (characterYPos + character.height)
+        );
+
+        for (int i = 0; i < mountains.length; i++) {
+            Rect mountainRect = new Rect(
+                    (int) mountains[i].x,
+                    (int) mountains[i].y,
+                    (int) (mountains[i].x + mountains[i].width),
+                    (int) (mountains[i].y + mountains[i].height)
+            );
+
+            if (Rect.intersects(projectileRect, mountainRect)) {
+                // Collision detected
+                return true;
+            }
+        }
+
+        // No collision detected
+        return false;
+    }
+
 
     private void gameOver() {
         // Stop the game
@@ -228,6 +293,18 @@ public class Gameview extends SurfaceView implements Runnable {
                     characterXPos += moveX;
                     characterYPos += moveY;
                     draw();
+
+                    if(getCollidingMountainIndex() != collidingMountainIndex) {
+                        if (checkProjectileMountainCollision()) {
+                            // Collision detected, trigger character revolving
+
+                            angle = 0;
+                            // Store the colliding mountain's index for reference during revolving
+                            collidingMountainIndex = getCollidingMountainIndex();
+                            break;
+                        }
+                    }
+
                     try {
                         Thread.sleep(20); // Adjust the sleep time for smoother animation
                     } catch (InterruptedException e) {
@@ -240,5 +317,6 @@ public class Gameview extends SurfaceView implements Runnable {
             }
         }).start();
     }
+
 
 }
